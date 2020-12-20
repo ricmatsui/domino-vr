@@ -1,0 +1,13 @@
+diff --git a/node_modules/@react-three/xr/dist/index.js b/node_modules/@react-three/xr/dist/index.js
+index 74d01ee..d93262d 100644
+--- a/node_modules/@react-three/xr/dist/index.js
++++ b/node_modules/@react-three/xr/dist/index.js
+@@ -258,7 +258,7 @@ function Select({
+     var _e$controller$inputSo3;
+ 
+     if (hoveredHandedness.current.has((_e$controller$inputSo3 = e.controller.inputSource) == null ? void 0 : _e$controller$inputSo3.handedness)) {
+-      onSelect();
++      onSelect(e);
+     }
+   }, [onSelect]);
+   useXREvent('selectend', onEnd);
