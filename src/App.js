@@ -6,8 +6,11 @@ import { Text } from '@react-three/drei';
 import { Physics, useBox } from '@react-three/cannon'
 import _ from 'lodash';
 import * as THREE from 'three'
+import { useFrame } from 'react-three-fiber'
 
 const DOMINO_SIZE = [0.375, 0.75, 0.075];
+
+const TOOL_OFFSET = new THREE.Vector3(0, 0.05, -0.05);
 
 const PlayField = () => {
   const [dominoes, setDominoes] = React.useState([]);
@@ -19,19 +22,128 @@ const PlayField = () => {
   const [startPosition, setStartPosition] = React.useState(null);
   const [endPosition, setEndPosition] = React.useState(null);
 
+  const [tool, setTool] = React.useState('domino');
+
+  const toolRef = React.useRef(null);
+
+  const controllerRef = React.useRef(null);
+
+  useFrame(
+    React.useCallback(() => {
+      if (!controllerRef.current) {
+        return;
+      }
+
+      setDebug(JSON.stringify({
+        buttons: controllerRef.current.inputSource.gamepad.buttons.map((button) => button.pressed),
+        length: controllerRef.current.hoverRayLength,
+        axes: controllerRef.current.inputSource.gamepad.axes,
+        angle: new THREE.Vector2(
+          controllerRef.current.inputSource.gamepad.axes[2],
+          controllerRef.current.inputSource.gamepad.axes[3],
+        ).angle(),
+      }, null, 4));
+    }, [
+      controllerRef,
+      setDebug,
+    ])
+  );
+
+  useFrame(
+    React.useCallback(() => {
+      if (!toolRef.current || !controllerRef.current) {
+        return;
+      }
+
+      toolRef.current.position.copy(controllerRef.current.controller.position);
+      toolRef.current.position.add(TOOL_OFFSET);
+    }, [
+      controllerRef,
+      toolRef,
+    ])
+  );
+
+  const previousGamepadStateRef = React.useRef(null);
+  const gamepadStateRef = React.useRef(null);
+
+  const [dominoRunId, setDominoRunId] = React.useState('initial');
+
+  const restartDominoes = React.useCallback(() => {
+    setDominoRunId(_.uniqueId('dominoRun_'));
+  }, [setDominoRunId]);
+
+  useFrame(
+    React.useCallback(() => {
+      if (!controllerRef.current) {
+        return;
+      }
+
+      const joystick = new THREE.Vector2(
+        controllerRef.current.inputSource.gamepad.axes[2],
+        controllerRef.current.inputSource.gamepad.axes[3],
+      );
+
+      let tool = 'domino';
+
+      if (joystick.length() > 0.5) {
+        const tools = [
+          'undo',
+          'reset',
+        ];
+
+        tool = tools[Math.floor(joystick.angle() / (2 * Math.PI) * tools.length)];
+      }
+
+      gamepadStateRef.current = {
+        click: controllerRef.current.inputSource.gamepad.buttons[0].pressed,
+        x: joystick.x,
+        y: joystick.y,
+        tool,
+      };
+
+      if (previousGamepadStateRef.current) {
+        if (gamepadStateRef.current.click && !previousGamepadStateRef.current.click) {
+          if (tool === 'reset') {
+            restartDominoes();
+          }
+
+          if (tool === 'undo') {
+            setDominoes(dominoes.slice(0, -1));
+          }
+        }
+
+        if (gamepadStateRef.current.tool !== !previousGamepadStateRef.current.tool) {
+          setTool(tool);
+        }
+      }
+
+      previousGamepadStateRef.current = { ...gamepadStateRef.current };
+    }, [
+      previousGamepadStateRef,
+      gamepadStateRef,
+      restartDominoes,
+      setTool,
+      setDominoes,
+      dominoes,
+    ])
+  );
+
   const onSelect = React.useCallback((event) => {
     const selectedPosition = new THREE.Vector3(0, 0, -1)
       .applyQuaternion(event.controller.controller.quaternion)
       .multiplyScalar(event.controller.hoverRayLength)
       .add(event.controller.controller.position);
 
-    setDebug(JSON.stringify(
-      {
-        pressed: event.controller.inputSource.gamepad.buttons[5].pressed,
-      },
-      null,
-      4
-    ));
+    controllerRef.current = event.controller;
+
+    if (!gamepadStateRef.current) {
+      return;
+    }
+
+    if (new THREE.Vector2(gamepadStateRef.current.x, gamepadStateRef.current.y)
+      .length() > 0.5) {
+      return;
+    }
 
     if (!startPosition) {
       setStartPosition(selectedPosition);
@@ -97,10 +209,10 @@ const PlayField = () => {
 
     setStartPosition(null);
   }, [
-    setDebug,
     setDebugRotation,
     dominoes,
     setDominoes,
+    controllerRef,
     setStartPosition,
     setEndPosition,
     startPosition,
@@ -113,8 +225,16 @@ const PlayField = () => {
         <Ground color='#3CCC00' />
       </Select>
       {dominoes.map((domino) => (
-        <Domino key={domino.id} domino={domino} />
+        <Domino key={dominoRunId + domino.id} domino={domino} />
       ))}
+      <Text
+        ref={toolRef}
+        fontSize={0.05}
+        color='white'
+        anchorX='center'
+        anchorY='middle'>
+        {tool}
+      </Text>
       <Text
         position={[0, 3, -7]}
         color='white'
